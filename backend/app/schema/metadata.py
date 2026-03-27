@@ -1,16 +1,3 @@
-import os
-import duckdb
-
-try:
-    from llama_index.core import VectorStoreIndex, Document
-    HAS_LLAMA_INDEX = True
-except ImportError:
-    HAS_LLAMA_INDEX = False
-
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DB_PATH = os.path.join(BASE_DIR, "instacart.db")
-
-# Rich schema descriptions with relationships and business context
 TABLE_METADATA = {
     "orders": {
         "description": "Core order table with 3.4M orders from 200K+ users",
@@ -53,7 +40,7 @@ TABLE_METADATA = {
             "aisle_id": "FK to aisles.aisle_id",
             "department_id": "FK to departments.department_id",
         },
-        "notes": "Three-level hierarchy: product → aisle → department. JOIN through products to get department/aisle for order items.",
+        "notes": "Three-level hierarchy: product -> aisle -> department. JOIN through products to get department/aisle for order items.",
     },
     "aisles": {
         "description": "134 product aisles (subcategories within departments)",
@@ -75,12 +62,12 @@ TABLE_METADATA = {
 
 RELATIONSHIP_DOC = """
 KEY RELATIONSHIPS (Foreign Keys):
-- orders.order_id → order_products_prior.order_id (one-to-many)
-- orders.order_id → order_products_train.order_id (one-to-many)
-- order_products_prior.product_id → products.product_id (many-to-one)
-- order_products_train.product_id → products.product_id (many-to-one)
-- products.aisle_id → aisles.aisle_id (many-to-one)
-- products.department_id → departments.department_id (many-to-one)
+- orders.order_id -> order_products_prior.order_id (one-to-many)
+- orders.order_id -> order_products_train.order_id (one-to-many)
+- order_products_prior.product_id -> products.product_id (many-to-one)
+- order_products_train.product_id -> products.product_id (many-to-one)
+- products.aisle_id -> aisles.aisle_id (many-to-one)
+- products.department_id -> departments.department_id (many-to-one)
 
 COMMON JOIN PATTERNS:
 - Product details for orders: order_products_prior JOIN products ON product_id
@@ -97,37 +84,8 @@ IMPORTANT NOTES:
 """
 
 
-def get_schema_docs():
-    """Build rich schema documents for vector indexing."""
-    docs = []
-
-    for table_name, meta in TABLE_METADATA.items():
-        col_details = "\n".join(
-            f"    - {col}: {desc}" for col, desc in meta["columns"].items()
-        )
-        text = f"""Table: {table_name}
-Description: {meta['description']}
-Columns:
-{col_details}
-Notes: {meta['notes']}"""
-        docs.append(Document(text=text, metadata={"table": table_name}))
-
-    docs.append(
-        Document(text=RELATIONSHIP_DOC, metadata={"type": "relationships"})
-    )
-
-    return docs
-
-
-def build_schema_index():
-    """Build a vector index over schema documents for retrieval."""
-    docs = get_schema_docs()
-    index = VectorStoreIndex.from_documents(docs)
-    return index
-
-
-def get_schema_text():
-    """Return full schema as plain text (for direct injection into prompts)."""
+def get_schema_text() -> str:
+    """Return full schema as plain text for prompt injection."""
     parts = []
     for table_name, meta in TABLE_METADATA.items():
         cols = ", ".join(meta["columns"].keys())

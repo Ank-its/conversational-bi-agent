@@ -5,3 +5,8 @@ instacart.db
 charts/
 .streamlit/
 data/
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
