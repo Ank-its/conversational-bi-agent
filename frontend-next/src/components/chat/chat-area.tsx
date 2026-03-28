@@ -5,18 +5,20 @@ import MessageList from "./message-list";
 import ChatInput from "./chat-input";
 
 export default function ChatArea() {
-  const { activeSession, isSending, streamingPlan, streamingAgent, streamingPhase, send, stop } = useChat();
+  const { activeSessionId, activeSession, isSending, sendingSessionId, streamingPlan, streamingAgent, streamingPhase, send, stop } = useChat();
+
+  const isActiveSessionSending = isSending && sendingSessionId === activeSessionId;
 
   return (
     <div className="flex flex-1 flex-col">
       <MessageList
         messages={activeSession?.messages ?? []}
-        isPending={isSending}
-        streamingPlan={streamingPlan}
-        streamingAgent={streamingAgent}
-        streamingPhase={streamingPhase}
+        isPending={isActiveSessionSending}
+        streamingPlan={isActiveSessionSending ? streamingPlan : ""}
+        streamingAgent={isActiveSessionSending ? streamingAgent : ""}
+        streamingPhase={isActiveSessionSending ? streamingPhase : "idle"}
       />
-      <ChatInput onSend={send} onStop={stop} isPending={isSending} />
+      <ChatInput onSend={send} onStop={stop} isPending={isActiveSessionSending} />
     </div>
   );
 }

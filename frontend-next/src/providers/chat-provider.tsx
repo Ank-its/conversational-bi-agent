@@ -75,6 +75,7 @@ interface ChatContextValue {
   activeSession: ChatSession | null;
   counter: number;
   isSending: boolean;
+  sendingSessionId: string | null;
   streamingPlan: string;
   streamingAgent: string;
   streamingPhase: "idle" | "planning" | "executing" | "answering";
@@ -96,6 +97,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     counter: 0,
   });
   const [isSending, setIsSending] = useState(false);
+  const [sendingSessionId, setSendingSessionId] = useState<string | null>(null);
   const [streamingPlan, setStreamingPlan] = useState("");
   const [streamingAgent, setStreamingAgent] = useState("");
   const [streamingPhase, setStreamingPhase] = useState<"idle" | "planning" | "executing" | "answering">("idle");
@@ -143,6 +145,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       const controller = new AbortController();
       abortRef.current = controller;
       setIsSending(true);
+      setSendingSessionId(sessionId);
       setStreamingPlan("");
       setStreamingAgent("");
       setStreamingPhase("planning");
@@ -165,12 +168,19 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             refined_query: data.refined_query,
           });
         })
-        .catch(() => {
-          // aborted or failed — no action needed
+        .catch((err) => {
+          const wasAborted = controller.signal.aborted;
+          appendMessage(sessionId, {
+            role: "assistant",
+            content: wasAborted
+              ? "Response was stopped."
+              : "Something went wrong. Please try again.",
+          });
         })
         .finally(() => {
           abortRef.current = null;
           setIsSending(false);
+          setSendingSessionId(null);
           setStreamingPlan("");
           setStreamingAgent("");
           setStreamingPhase("idle");
@@ -183,6 +193,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     abortRef.current?.abort();
     abortRef.current = null;
     setIsSending(false);
+    setSendingSessionId(null);
   }, []);
 
   const activeSession = state.activeSessionId
@@ -197,6 +208,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         activeSession,
         counter: state.counter,
         isSending,
+        sendingSessionId,
         streamingPlan,
         streamingAgent,
         streamingPhase,
