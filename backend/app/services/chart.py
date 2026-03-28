@@ -96,7 +96,10 @@ class ChartService:
         """Generate a chart from a DataFrame and return as base64-encoded ChartData."""
         if df is None or df.empty or len(df.columns) < 2:
             return None
-
+            
+        numeric_cols = df.select_dtypes(include="number").columns
+        if len(numeric_cols) == 0:
+            return None
         try:
             return self._generate_chart(df, query, chart_type)
         except Exception as e:
