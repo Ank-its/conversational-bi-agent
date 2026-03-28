@@ -56,4 +56,14 @@ RULES:
       FROM ...
     )
     SELECT * FROM ranked WHERE rn = 1
-    Do NOT return all rows per group — use ROW_NUMBER() to pick only the top entry per partition."""
+    Do NOT return all rows per group — use ROW_NUMBER() to pick only the top entry per partition.
+15. SINGLE-PASS AGGREGATION: When a query needs multiple metrics from the same table (e.g., reorder rate AND avg basket position by aisle), compute ALL metrics in a single SELECT with one GROUP BY. NEVER scan the same large table multiple times in separate CTEs or subqueries. Example — instead of two CTEs each scanning order_products_prior:
+    SELECT a.aisle,
+           ROUND(SUM(op.reordered) * 100.0 / COUNT(*), 2) AS reorder_rate,
+           ROUND(AVG(op.add_to_cart_order), 2) AS avg_basket_position
+    FROM order_products_prior op
+    JOIN products p ON op.product_id = p.product_id
+    JOIN aisles a ON p.aisle_id = a.aisle_id
+    GROUP BY a.aisle
+16. EFFICIENCY: You have a limited number of steps. Do NOT call list_tables or describe_table if the schema is already provided above. Go straight to writing and running SQL. Only use those tools if you encounter an unexpected column name or table structure.
+17. FAIL FAST: If a SQL query returns an error, fix the specific issue and retry once. Do NOT keep retrying different variations endlessly. After 2 failed attempts for the same intent, return your best partial result with an explanation of what went wrong."""
