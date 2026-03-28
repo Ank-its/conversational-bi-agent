@@ -18,10 +18,10 @@ class PlannerService:
             api_key=config.openai_api_key,
         )
 
-    def plan(self, query: str, schema_context: str) -> str:
-        """Break a complex user query into logical execution steps."""
+    async def stream_plan(self, query: str, schema_context: str):
+        """Stream plan tokens as they are generated."""
         prompt = PLANNER_PROMPT_TEMPLATE.format(schema_context=schema_context, query=query)
-
-        logger.debug("Planning query: %s", query)
-        response = self._llm.invoke(prompt)
-        return response.content
+        logger.debug("Streaming plan for query: %s", query)
+        async for chunk in self._llm.astream(prompt):
+            if chunk.content:
+                yield chunk.content

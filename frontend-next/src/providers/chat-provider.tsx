@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import type { ChatSession, StoredMessage } from "@/lib/types";
-import { sendChat } from "@/lib/api-client";
+import { streamChat } from "@/lib/api-client";
 import { truncateTitle } from "@/lib/utils";
 
 interface ChatState {
@@ -75,6 +75,9 @@ interface ChatContextValue {
   activeSession: ChatSession | null;
   counter: number;
   isSending: boolean;
+  streamingPlan: string;
+  streamingAgent: string;
+  streamingPhase: "idle" | "planning" | "executing" | "answering";
   addSession: (sessionId: string) => void;
   setActive: (sessionId: string) => void;
   appendMessage: (sessionId: string, message: StoredMessage) => void;
@@ -93,6 +96,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     counter: 0,
   });
   const [isSending, setIsSending] = useState(false);
+  const [streamingPlan, setStreamingPlan] = useState("");
+  const [streamingAgent, setStreamingAgent] = useState("");
+  const [streamingPhase, setStreamingPhase] = useState<"idle" | "planning" | "executing" | "answering">("idle");
 
   const activeIdRef = useRef(state.activeSessionId);
   activeIdRef.current = state.activeSessionId;
@@ -137,8 +143,18 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       const controller = new AbortController();
       abortRef.current = controller;
       setIsSending(true);
+      setStreamingPlan("");
+      setStreamingAgent("");
+      setStreamingPhase("planning");
 
-      sendChat(query, sessionId, controller.signal)
+      streamChat(query, sessionId, {
+        onPlanToken: (token) => setStreamingPlan((prev) => prev + token),
+        onPlanDone: () => setStreamingPhase("executing"),
+        onAgentToken: (token) => {
+          setStreamingPhase("answering");
+          setStreamingAgent((prev) => prev + token);
+        },
+      }, controller.signal)
         .then((data) => {
           appendMessage(sessionId, {
             role: "assistant",
@@ -155,6 +171,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         .finally(() => {
           abortRef.current = null;
           setIsSending(false);
+          setStreamingPlan("");
+          setStreamingAgent("");
+          setStreamingPhase("idle");
         });
     },
     [appendMessage, setTitleCb],
@@ -178,6 +197,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         activeSession,
         counter: state.counter,
         isSending,
+        streamingPlan,
+        streamingAgent,
+        streamingPhase,
         addSession,
         setActive,
         appendMessage,

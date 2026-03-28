@@ -1,6 +1,9 @@
+import json
 import logging
 
 from fastapi import APIRouter, Request, HTTPException
+from fastapi.responses import StreamingResponse
+from langchain_core.messages import AIMessageChunk
 
 from app.models.requests import ChatRequest
 from app.models.responses import (
@@ -8,9 +11,7 @@ from app.models.responses import (
     NewChatResponse,
     ChatHistoryResponse,
     ChatHistoryMessage,
-    ErrorResponse,
 )
-from app.exceptions import SessionNotFoundError, QueryExecutionError
 
 logger = logging.getLogger(__name__)
 
@@ -39,9 +40,9 @@ def get_chat_history(session_id: str, request: Request):
     )
 
 
-@router.post("", response_model=ChatResponse, responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}})
-def chat(body: ChatRequest, request: Request):
-    """Send a query and get a response with optional table data and chart."""
+@router.post("/stream")
+async def chat_stream(body: ChatRequest, request: Request):
+    """Stream the full plan + agent execution lifecycle via SSE."""
     session_manager = request.app.state.session_manager
     agent_service = request.app.state.agent_service
     planner_service = request.app.state.planner_service
@@ -49,48 +50,64 @@ def chat(body: ChatRequest, request: Request):
     refiner_service = request.app.state.refiner_service
     schema_text = request.app.state.schema_text
 
-    # Validate session
     session = session_manager.get_session(body.session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    # Store user message
     session_manager.add_message(body.session_id, "user", body.query)
 
-    # Refine follow-up queries
     refined = refiner_service.refine(body.query, session.history)
     refined_query = refined if refined != body.query else None
-
     query_to_execute = refined if refined != body.query else body.query
 
-    # Plan
-    plan = planner_service.plan(query_to_execute, schema_text)
+    async def generate():
+        # Phase 1: Stream plan
+        plan_text = ""
+        async for token in planner_service.stream_plan(query_to_execute, schema_text):
+            plan_text += token
+            yield f"data: {json.dumps({'type': 'plan', 'chunk': token})}\n\n"
+        yield f"data: {json.dumps({'type': 'plan_done', 'plan': plan_text})}\n\n"
 
-    # Execute
-    try:
-        result = agent_service.execute_query(query_to_execute, session.history)
-    except QueryExecutionError as e:
-        logger.error("Query execution failed: %s", e)
-        raise HTTPException(status_code=400, detail=str(e))
+        # Phase 2: Stream agent execution
+        final_content = ""
+        async for msg_chunk, metadata in agent_service.stream_execute_query(
+            query_to_execute, session.history
+        ):
+            if isinstance(msg_chunk, AIMessageChunk):
+                if msg_chunk.tool_calls:
+                    for tc in msg_chunk.tool_calls:
+                        yield f"data: {json.dumps({'type': 'tool_call', 'name': tc['name'], 'args': str(tc.get('args', ''))})}\n\n"
+                elif msg_chunk.content:
+                    # Only stream tokens from the final answer node (not internal reasoning)
+                    langgraph_node = metadata.get("langgraph_node", "")
+                    if langgraph_node == "agent":
+                        final_content += msg_chunk.content
+                        yield f"data: {json.dumps({'type': 'agent', 'chunk': msg_chunk.content})}\n\n"
+            elif hasattr(msg_chunk, 'content') and msg_chunk.content:
+                # ToolMessage results
+                yield f"data: {json.dumps({'type': 'tool_result', 'result': msg_chunk.content[:500]})}\n\n"
 
-    # Parse table data
-    df = chart_service.parse_result(str(result))
-    table_data = None
-    chart_data = None
+        # Phase 3: Build final response with chart
+        result = final_content
+        df = chart_service.parse_result(str(result))
+        table_data = None
+        chart_data = None
 
-    if df is not None and len(df) >= 2:
-        table_data = df.to_dict(orient="records")
-        chart_data = chart_service.generate(df, query=body.query)
+        if df is not None and len(df) >= 2:
+            table_data = df.to_dict(orient="records")
+            chart_data = chart_service.generate(df, query=body.query)
 
-    # Store assistant message and history
-    session_manager.add_message(body.session_id, "assistant", result)
-    session_manager.add_history(body.session_id, body.query, str(result))
+        session_manager.add_message(body.session_id, "assistant", result)
+        session_manager.add_history(body.session_id, body.query, str(result))
 
-    return ChatResponse(
-        answer=result,
-        plan=plan,
-        table_data=table_data,
-        chart=chart_data,
-        session_id=body.session_id,
-        refined_query=refined_query,
-    )
+        response = ChatResponse(
+            answer=result,
+            plan=plan_text,
+            table_data=table_data,
+            chart=chart_data,
+            session_id=body.session_id,
+            refined_query=refined_query,
+        )
+        yield f"data: {json.dumps({'type': 'result', 'data': response.model_dump()})}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")

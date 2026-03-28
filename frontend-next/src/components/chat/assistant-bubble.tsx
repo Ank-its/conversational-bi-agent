@@ -1,6 +1,7 @@
 "use client";
 
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { StoredMessage } from "@/lib/types";
 import { stripPipeTables } from "@/lib/utils";
 import QueryPlan from "./query-plan";
@@ -33,7 +34,7 @@ export default function AssistantBubble({ message }: AssistantBubbleProps) {
 
         {displayText && (
           <div className="prose prose-sm max-w-none">
-            <ReactMarkdown>{displayText}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{displayText}</ReactMarkdown>
           </div>
         )}
 

@@ -1,6 +1,7 @@
 "use client";
 
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface QueryPlanProps {
   plan: string;
@@ -15,7 +16,7 @@ export default function QueryPlan({ plan }: QueryPlanProps) {
         Query Plan
       </summary>
       <div className="border-t border-zinc-200 px-3 py-2 prose prose-sm max-w-none">
-        <ReactMarkdown>{plan}</ReactMarkdown>
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{plan}</ReactMarkdown>
       </div>
     </details>
   );

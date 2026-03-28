@@ -14,15 +14,15 @@ services:
       timeout: 10s
       retries: 3
 
-  frontend:
-    build: ./frontend-streamlit
-    ports:
-      - "8501:8501"
-    env_file: ./frontend-streamlit/.env
-    volumes:
-      - ./frontend-streamlit:/app
-    depends_on:
-      - backend
+  # frontend:
+  #   build: ./frontend-streamlit
+  #   ports:
+  #     - "8501:8501"
+  #   env_file: ./frontend-streamlit/.env
+  #   volumes:
+  #     - ./frontend-streamlit:/app
+  #   depends_on:
+  #     - backend
 
   frontend-next:
     build: ./frontend-next

@@ -5,7 +5,6 @@ from langgraph.prebuilt import create_react_agent
 from langchain_core.tools import tool
 
 from app.config import AppConfig
-from app.exceptions import QueryExecutionError
 from app.prompts import AGENT_SYSTEM_PROMPT
 from app.services.database import DatabaseService
 
@@ -72,8 +71,8 @@ class AgentService:
         )
         return create_react_agent(llm, [run_sql, list_tables, describe_table], prompt=AGENT_SYSTEM_PROMPT)
 
-    def execute_query(self, query: str, history: list[tuple[str, str]] | None = None) -> str:
-        """Execute a natural language query via the SQL agent with retry on failure."""
+    def _build_prompt(self, query: str, history: list[tuple[str, str]] | None = None) -> str:
+        """Build the full prompt with conversation context."""
         context = ""
         if history:
             recent = history[-3:]
@@ -81,26 +80,16 @@ class AgentService:
             for q, a in recent:
                 context += f"Q: {q}\nA: {a[:300]}\n"
             context += "\n"
-
-        full_prompt = f"""{context}User question: {query}
+        return f"""{context}User question: {query}
 
 Answer the question by querying the database. Return the result clearly formatted."""
 
-        for attempt in range(self._config.max_retries + 1):
-            try:
-                result = self._agent.invoke({"messages": [("human", full_prompt)]})
-                messages = result.get("messages", [])
-                if messages:
-                    return messages[-1].content
-                return str(result)
-            except Exception as e:
-                logger.warning("Agent attempt %d failed: %s", attempt + 1, e)
-                if attempt < self._config.max_retries:
-                    full_prompt = (
-                        f"The previous attempt failed with error: {e}\n"
-                        f"Please fix and retry.\nOriginal question: {query}"
-                    )
-                else:
-                    raise QueryExecutionError(
-                        f"Query failed after {self._config.max_retries + 1} attempts: {e}"
-                    ) from e
+    async def stream_execute_query(self, query: str, history: list[tuple[str, str]] | None = None):
+        """Stream agent execution, yielding (message_chunk, metadata) tuples."""
+        full_prompt = self._build_prompt(query, history)
+        async for event in self._agent.astream(
+            {"messages": [("human", full_prompt)]},
+            stream_mode="messages",
+        ):
+            msg_chunk, metadata = event
+            yield msg_chunk, metadata
