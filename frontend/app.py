@@ -135,11 +135,16 @@ if pending and not user_input:
     user_input = pending
 
 if user_input:
-    if not chat["messages"] or chat["messages"][-1].get("content") != user_input or chat["messages"][-1].get("role") != "user":
+    # Only append + render if not already in history (sample questions pre-append)
+    already_in_history = (
+        chat["messages"]
+        and chat["messages"][-1].get("role") == "user"
+        and chat["messages"][-1].get("content") == user_input
+    )
+    if not already_in_history:
         chat["messages"].append({"role": "user", "content": user_input})
-
-    with st.chat_message("user"):
-        st.markdown(user_input)
+        with st.chat_message("user"):
+            st.markdown(user_input)
 
     if chat["title"] == "New Chat":
         chat["title"] = user_input[:40] + ("..." if len(user_input) > 40 else "")
