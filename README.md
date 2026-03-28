@@ -6,12 +6,12 @@ A production-grade conversational Business Intelligence agent that converts natu
 
 ```
 ┌──────────────────┐        HTTP/JSON        ┌──────────────────────────┐
-│                  │  ───────────────────►    │                          │
-│   Streamlit UI   │   POST /api/chat        │   FastAPI Backend        │
-│   (Frontend)     │   GET  /api/health      │                          │
-│   :8501          │  ◄───────────────────   │   :8000                  │
-│                  │    ChatResponse          │                          │
-└──────────────────┘                         │  ┌─────────────────────┐ │
+│   Next.js UI     │  ───────────────────►    │                          │
+│   (Frontend)     │   POST /api/chat        │   FastAPI Backend        │
+│   :3000          │   GET  /api/health      │                          │
+│                  │  ◄───────────────────   │   :8000                  │
+└──────────────────┘    ChatResponse          │                          │
+                                             │  ┌─────────────────────┐ │
                                              │  │ QueryRefinerService │ │
                                              │  │ PlannerService      │ │
                                              │  │ AgentService        │──── LangGraph ReAct
@@ -27,7 +27,7 @@ A production-grade conversational Business Intelligence agent that converts natu
 | Component | Technology | Justification |
 |-----------|-----------|---------------|
 | Backend API | FastAPI | Async-ready, auto OpenAPI docs, Pydantic validation |
-| Frontend | Streamlit | Rapid prototyping, built-in chat UI, dataframe rendering |
+| Frontend | Next.js 15 + TypeScript | App Router, TanStack Query, Tailwind CSS |
 | LLM Framework | LangGraph + LangChain | ReAct agent pattern with tool-calling |
 | LLM | GPT-4o-mini | Cost-effective, fast, strong SQL reasoning |
 | Database | DuckDB | Columnar analytics DB, handles 32M rows in-process |
@@ -37,34 +37,30 @@ A production-grade conversational Business Intelligence agent that converts natu
 ## Project Structure
 
 ```
-Hireathon-1/
-├── backend/                 # FastAPI backend service
+├── backend/                   # FastAPI backend service
 │   ├── app/
-│   │   ├── main.py          # App entrypoint & lifespan
-│   │   ├── config.py         # Pydantic settings
-│   │   ├── exceptions.py     # Custom exception handlers
-│   │   ├── models/           # Request/response schemas
-│   │   ├── services/         # Business logic layer
-│   │   ├── routers/          # API route handlers
-│   │   └── schema/           # DB schema context for LLM
+│   │   ├── main.py            # App entrypoint & lifespan
+│   │   ├── config.py          # Pydantic settings
+│   │   ├── exceptions.py      # Custom exception handlers
+│   │   ├── models/            # Request/response schemas
+│   │   ├── services/          # Business logic layer
+│   │   ├── routers/           # API route handlers
+│   │   └── schema/            # DB schema context for LLM
 │   ├── Dockerfile
-│   ├── requirements.txt
-│   ├── .env                  # Backend environment variables (git-ignored)
-│   └── .env.example          # Backend env template
-├── frontend/                # Streamlit frontend service
-│   ├── app.py               # Chat UI
-│   ├── api_client.py        # Backend HTTP client
+│   └── requirements.txt
+├── frontend-next/             # Next.js frontend (primary)
+│   ├── src/
+│   │   ├── app/               # Next.js App Router (layout, page, globals)
+│   │   ├── components/        # UI components (sidebar, chat)
+│   │   ├── hooks/             # React hooks (new-chat, health)
+│   │   ├── lib/               # Types, API client, utils, constants
+│   │   └── providers/         # QueryClient + Chat context providers
 │   ├── Dockerfile
-│   ├── requirements.txt
-│   ├── .env                 # Frontend environment variables (git-ignored)
-│   └── .env.example         # Frontend env template
-├── data/                    # Instacart CSV files (git-ignored)
-├── docs/                    # Project documentation
-│   ├── EVALUATION_SCORECARD.md
-│   ├── test_queries.md
-│   └── test_results/
+│   └── package.json
+├── frontend-streamlit/        # Streamlit frontend (archived)
+├── data/                      # Instacart CSV files (git-ignored)
+├── docs/                      # Project documentation
 ├── docker-compose.yml
-├── .gitignore
 └── README.md
 ```
 
@@ -82,19 +78,26 @@ Hireathon-1/
 cp backend/.env.example backend/.env
 # Edit backend/.env — set your OPENAI_API_KEY
 
-cp frontend/.env.example frontend/.env
-# Frontend defaults are fine (BACKEND_URL=http://backend:8000)
-
 # 2. Place CSV files in data/
 #    orders.csv, order_products__prior.csv, order_products__train.csv,
 #    products.csv, aisles.csv, departments.csv
 
-# 3. Start both services
-docker-compose up --build
+# 3. Start services
+docker compose up --build
 
-# Frontend: http://localhost:8501
-# Backend:  http://localhost:8000
-# API Docs: http://localhost:8000/docs
+# Next.js Frontend: http://localhost:3000
+# Backend API:      http://localhost:8000
+# API Docs:         http://localhost:8000/docs
+```
+
+### Running Individual Frontends
+
+```bash
+# Next.js frontend (recommended)
+docker compose up backend frontend-next
+
+# Streamlit frontend (legacy)
+docker compose up backend frontend
 ```
 
 ### Manual Setup
@@ -107,11 +110,11 @@ cp .env.example .env
 pip install -r requirements.txt
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 
-# Frontend (separate terminal)
-cd frontend
-cp .env.example .env
-pip install -r requirements.txt
-streamlit run app.py
+# Next.js Frontend (separate terminal)
+cd frontend-next
+npm install
+npm run dev
+# Opens at http://localhost:3000
 ```
 
 ### Environment Variables
@@ -129,11 +132,11 @@ streamlit run app.py
 | `CHART_DPI` | `100` | Chart image resolution |
 | `MAX_RESULT_ROWS` | `30` | Max rows in query results |
 
-**Frontend** (`frontend/.env`):
+**Frontend** (`frontend-next/.env.local`):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `BACKEND_URL` | `http://backend:8000` | Backend API base URL |
+| `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | Backend API base URL |
 
 ## API Documentation
 
@@ -195,25 +198,14 @@ departments (21 rows)          aisles (134 rows)
                          (3.4M rows)
 ```
 
-The dataset captures Instacart's grocery ordering history across 6 tables:
-
-- **orders** (3.4M rows) — Each row is a single order placed by a user, with metadata like day of week, hour of day, and days since the user's previous order.
-- **order_products_prior** (32M rows) — The main fact table. Each row links an order to a product, representing one item in a user's basket. Contains the `add_to_cart_order` (sequence the item was added) and whether it was a `reordered` item.
-- **order_products_train** (1.4M rows) — Same structure as prior, but holds the most recent order per user (used as the training set in the original Kaggle competition).
-- **products** (50K rows) — Product catalog with name, linked to an aisle and department.
-- **aisles** (134 rows) — Aisle names (e.g., "fresh fruits", "yogurt").
-- **departments** (21 rows) — Department names (e.g., "produce", "dairy eggs").
-
-The `products` table is the central dimension: it connects to `departments` and `aisles` for categorization, and to the two order-product tables via `product_id`. The order-product tables join to `orders` via `order_id`, completing the chain from "who ordered when" to "what product in which category."
-
 ## Key Design Decisions
 
-1. **Frontend/Backend Separation**: Streamlit acts as a thin client, all logic in FastAPI. Enables independent scaling and testing.
-2. **Per-Service Environment**: Each service has its own `.env` file, keeping secrets isolated to the services that need them.
-3. **Dependency Injection**: Services are instantiated once at startup and injected via `app.state`. No global singletons.
-4. **Base64 Charts**: Charts are returned as base64-encoded PNGs in the API response, eliminating filesystem dependencies.
-5. **In-Memory Sessions**: Chat sessions stored in memory for simplicity. Trade-off: sessions lost on restart.
-6. **Pydantic Validation**: All API inputs validated with field constraints (e.g., query length 1-1000 chars).
+1. **Frontend/Backend Separation**: Next.js frontend acts as a thin client, all logic in FastAPI. Enables independent scaling and testing.
+2. **React Context over Zustand**: Chat state is small (few sessions), no need for external state library.
+3. **TanStack Query**: Handles API caching, retries, and loading states for the frontend.
+4. **Dependency Injection**: Backend services instantiated once at startup and injected via `app.state`.
+5. **Base64 Charts**: Charts returned as base64 PNGs in API responses, eliminating filesystem dependencies.
+6. **In-Memory Sessions**: Chat sessions stored in memory for simplicity.
 7. **Multi-stage Docker**: Smaller runtime images by separating build dependencies.
 
 ## Known Limitations
