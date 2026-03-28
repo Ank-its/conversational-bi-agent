@@ -8,5 +8,4 @@ export const SAMPLE_QUESTIONS = [
   "Which departments have the highest reorder rate?",
   "Show order distribution by hour of day",
   "How many users placed more than 50 orders?",
-  "What aisles have highest reorder rate vs avg basket position?"
 ];
